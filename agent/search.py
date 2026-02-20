@@ -1,6 +1,7 @@
 # Environment variables for API keys, typing helpers, and URL parsing.
+import logging
 import os
-from typing import List, Dict
+from typing import Dict, List, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
 
 # HTTP client and search/HTML parsing helpers.
@@ -11,14 +12,31 @@ from bs4 import BeautifulSoup
 # URL normalization and domain scoring utilities.
 from .utils import canonicalize_url, domain_from_url, score_domain
 
+VALID_PROVIDERS = {"auto", "duckduckgo", "google_cse", "wikipedia"}
+logger = logging.getLogger(__name__)
 
-def _collect_results(query: str, max_results: int, backend: str) -> List[Dict[str, str]]:
+
+def _collect_results(
+    query: str, max_results: int, backend: str, safe_search: bool = True
+) -> List[Dict[str, str]]:
     # Primary DDG search via the duckduckgo_search library.
     results: List[Dict[str, str]] = []
     seen = set()
+    safe_mode = "moderate" if safe_search else "off"
 
     with DDGS() as ddgs:
-        for r in ddgs.text(query, max_results=max_results, backend=backend):
+        try:
+            ddg_iterator = ddgs.text(
+                query,
+                max_results=max_results,
+                backend=backend,
+                safesearch=safe_mode,
+            )
+        except TypeError:
+            # Compatibility with older versions that do not expose safesearch.
+            ddg_iterator = ddgs.text(query, max_results=max_results, backend=backend)
+
+        for r in ddg_iterator:
             # Normalize and validate URLs before storing.
             url = r.get("href") or r.get("url") or ""
             if not url.startswith("http"):
@@ -273,40 +291,72 @@ def _google_cse_search(query: str, max_results: int = 10) -> List[Dict[str, str]
     return results
 
 
-def search_web(query: str, max_results: int = 15) -> List[Dict[str, str]]:
-    # Try multiple backends in order of reliability.
+def _run_duckduckgo_search(
+    query: str, max_results: int, safe_search: bool
+) -> Tuple[List[Dict[str, str]], Exception | None]:
     backends = ["api", "html", "lite"]
     last_error: Exception | None = None
     results: List[Dict[str, str]] = []
-
     for backend in backends:
         try:
-            # Use the duckduckgo_search library first.
-            results = _collect_results(query, max_results, backend)
+            results = _collect_results(
+                query,
+                max_results=max_results,
+                backend=backend,
+                safe_search=safe_search,
+            )
             if results:
                 break
-        except Exception as e:
-            last_error = e
+        except Exception as error:
+            last_error = error
+    return results, last_error
 
-    # If the primary backends fail, try Google CSE if configured.
-    if not results:
+
+def search_web(
+    query: str,
+    max_results: int = 15,
+    provider: str = "auto",
+    safe_search: bool = True,
+) -> List[Dict[str, str]]:
+    # Try multiple backends in order of reliability.
+    provider = provider.strip().lower()
+    if provider not in VALID_PROVIDERS:
+        provider = "auto"
+
+    results: List[Dict[str, str]] = []
+    last_error: Exception | None = None
+
+    if provider in {"auto", "duckduckgo"}:
+        results, last_error = _run_duckduckgo_search(
+            query=query,
+            max_results=max_results,
+            safe_search=safe_search,
+        )
+
+    # If configured provider is Google CSE, only run Google CSE.
+    if provider == "google_cse":
         results = _google_cse_search(query, max_results=max_results)
 
-    # Fall back to HTML scraping of DuckDuckGo.
-    if not results:
+    # Wikipedia only mode for tighter control from the UI.
+    if provider == "wikipedia":
+        results = _wiki_search(query, max_results=max_results)
+
+    # In auto mode, cascade through all available providers.
+    if provider == "auto" and not results:
+        results = _google_cse_search(query, max_results=max_results)
+
+    if provider in {"auto", "duckduckgo"} and not results:
         results = _ddg_html_search(query, max_results=max_results)
 
-    # If HTML scraping fails, try the lite endpoint.
-    if not results:
+    if provider in {"auto", "duckduckgo"} and not results:
         results = _ddg_lite_search(query, max_results=max_results)
 
-    # Final fallback: Wikipedia search.
-    if not results:
+    if provider == "auto" and not results:
         wiki_results = _wiki_search(query, max_results=max_results)
         if wiki_results:
             results = wiki_results
         elif last_error:
-            print(f"Search failed: {last_error}")
+            logger.warning("Search failed: %s", last_error)
 
     # Rank results by domain reputation score.
     results.sort(key=lambda x: x["score"], reverse=True)

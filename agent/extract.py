@@ -32,18 +32,20 @@ def extract_main_text(html: str) -> str:
     return text
 
 
-def cached_extract(url: str, html: str, cache_dir: Path) -> Optional[str]:
-    # Ensure the cache directory exists for extracted text.
-    ensure_dir(cache_dir / "text")
-    cache_key = url_to_cache_key(url)
-    text_path = cache_dir / "text" / f"{cache_key}.txt"
+def cached_extract(url: str, html: str, cache_dir: Path | None = None) -> Optional[str]:
+    text_path: Path | None = None
+    if cache_dir is not None:
+        # Ensure the cache directory exists for extracted text.
+        ensure_dir(cache_dir / "text")
+        cache_key = url_to_cache_key(url)
+        text_path = cache_dir / "text" / f"{cache_key}.txt"
 
-    # Reuse cached extraction if it already exists.
-    if text_path.exists():
-        return text_path.read_text(encoding="utf-8", errors="ignore")
+        # Reuse cached extraction if it already exists.
+        if text_path.exists():
+            return text_path.read_text(encoding="utf-8", errors="ignore")
 
     # Extract fresh text and cache it for future runs.
     text = extract_main_text(html)
-    if text:
+    if text and text_path is not None:
         text_path.write_text(text, encoding="utf-8", errors="ignore")
     return text

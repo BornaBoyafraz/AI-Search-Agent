@@ -1,43 +1,112 @@
-# Research Agent (Free, Legal, Source-Based)
+# AI Search Agent
 
-A minimal Python research agent that searches the web with DuckDuckGo, respects robots.txt, extracts main text, and synthesizes one factual paragraph with a Sources list.
+AI Search Agent is a packaged desktop chat application for running your existing search/summarization pipeline in a ChatGPT-style interface.
+
+Run main.py to launch the app.
 
 ## Features
-- Free search via `duckduckgo_search`
-- Respects `robots.txt` (skips disallowed pages)
-- Requests + BeautifulSoup + readability-lxml for extraction
-- Caching for raw HTML and extracted text
-- One-paragraph summary + Sources list
 
-## Setup (macOS)
-1. `python3 -m venv .venv`
-2. `source .venv/bin/activate`
-3. `pip install -r requirements.txt`
-4. `python main.py "your topic"` (if `python` is not found, use `python3`)
-5. If you run `python main.py` without arguments, it will prompt you for a topic.
+- Desktop window titled **AI Search Agent**
+- Chat-style conversation panel with message bubbles
+- Multi-line input + **Send** button
+- **Enter** sends, **Shift+Enter** inserts a newline
+- Shows user message immediately
+- Shows assistant **Thinking...** bubble while searching
+- Replaces thinking bubble with the final answer/results
+- **Clear chat** button clears only the current conversation panel
+- In-memory chat only: no chat/history persistence
 
-## Setup (Windows PowerShell)
-1. `py -3.11 -m venv .venv`
-2. `.venv\Scripts\Activate.ps1`
-3. `pip install -r requirements.txt`
-4. `python main.py "your topic"` (if `python` is not found, use `python3`)
-5. If you run `python main.py` without arguments, it will prompt you for a topic.
+## Architecture
 
-## Usage
-- `python main.py "your topic"`
-- Output saved to `output/<sanitized_topic>_<YYYY-MM-DD>.txt`
+- `main.py`: single app entry point (launches GUI by default; optional `--cli` terminal mode)
+- `ui_app.py`: desktop GUI (Tkinter, desktop-native)
+- `ui_agent.py`: wrapper integration layer with:
+  - `run_agent(query: str) -> str`
+- `models.py`: UI response/result models
+- `agent/`: existing core search/fetch/extract/summarize logic (kept intact)
+- `ai_search_agent.spec`: PyInstaller build spec
 
-## Project Structure
-- `main.py` entry point
-- `agent/search.py` search and ranking
-- `agent/fetch.py` robots.txt and fetching
-- `agent/extract.py` main-text extraction
-- `agent/summarize.py` bullet summaries + one paragraph synthesis
-- `agent/writeout.py` output file writing
-- `agent/utils.py` helpers
+This repository currently uses the Tkinter fallback (PySide6 is not installed in this environment).
 
-## Notes & Troubleshooting
-- If you get empty outputs, many pages may block automated access or be disallowed by robots.txt.
-- Try broadening the query or using more general terms.
-- The agent does not bypass paywalls, logins, or restricted content.
-- If you see DNS or connectivity errors, ensure your environment has outbound internet access.
+## Installation
+
+### macOS
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -r requirements-build.txt
+```
+
+### Windows (PowerShell)
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -r requirements-build.txt
+```
+
+## Build A Clickable App
+
+### macOS `.app`
+
+```bash
+./scripts/build_mac_app.sh
+```
+
+Built output:
+
+- `dist/AI Search Agent.app`
+
+Run by clicking:
+
+1. Open Finder
+2. Go to `dist/`
+3. Double-click `AI Search Agent.app`
+
+Optional DMG:
+
+```bash
+./scripts/build_mac_dmg.sh
+```
+
+DMG output:
+
+- `dist/AI Search Agent.dmg`
+
+### Windows `.exe`
+
+```powershell
+scripts\build_windows_exe.bat
+```
+
+Built output folder:
+
+- `dist\AI Search Agent\`
+
+Main executable:
+
+- `dist\AI Search Agent\AI Search Agent.exe`
+
+Run by double-clicking `AI Search Agent.exe`.
+
+## Development Run (without packaging)
+
+```bash
+python3 main.py
+```
+
+## Notes
+
+- GUI calls agent logic in a background thread so the UI stays responsive.
+- Search/network failures are rendered as friendly assistant messages in the chat panel.
+
+## Author
+
+Seyedborna Boyafraz
+
+## License
+
+MIT License. See `LICENSE`.

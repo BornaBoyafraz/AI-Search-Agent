@@ -33,15 +33,17 @@ def allowed_by_robots(url: str, user_agent: str = USER_AGENT, timeout: int = 10)
     return rp.can_fetch(user_agent, url)
 
 
-def fetch_url(url: str, cache_dir: Path) -> Tuple[Optional[str], Optional[str]]:
-    # Ensure the cache directory exists for raw HTML.
-    ensure_dir(cache_dir / "html")
-    cache_key = url_to_cache_key(url)
-    html_path = cache_dir / "html" / f"{cache_key}.html"
+def fetch_url(url: str, cache_dir: Path | None = None) -> Tuple[Optional[str], Optional[str]]:
+    html_path: Path | None = None
+    if cache_dir is not None:
+        # Ensure the cache directory exists for raw HTML.
+        ensure_dir(cache_dir / "html")
+        cache_key = url_to_cache_key(url)
+        html_path = cache_dir / "html" / f"{cache_key}.html"
 
-    # Serve cached HTML if available.
-    if html_path.exists():
-        return html_path.read_text(encoding="utf-8", errors="ignore"), "cached"
+        # Serve cached HTML if available.
+        if html_path.exists():
+            return html_path.read_text(encoding="utf-8", errors="ignore"), "cached"
 
     # Use a realistic user agent to reduce blocks.
     headers = {"User-Agent": USER_AGENT}
@@ -59,7 +61,8 @@ def fetch_url(url: str, cache_dir: Path) -> Tuple[Optional[str], Optional[str]]:
 
     # Cache the fetched HTML for reuse.
     text = resp.text
-    html_path.write_text(text, encoding="utf-8", errors="ignore")
+    if html_path is not None:
+        html_path.write_text(text, encoding="utf-8", errors="ignore")
     # Small delay to be polite to servers.
     time.sleep(0.5)
     return text, "fetched"
